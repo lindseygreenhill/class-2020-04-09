@@ -16,10 +16,18 @@ x <- read_rds("college.rds")
 
 Today's class will be based on [Chapter 12: "Multiple Regression"](https://davidkane9.github.io/PPBDS/12-multiple-regression.html). Have you read it? We will be using data on college characteristics from the IPEDS Database and the Scorecard created by the Department of Education, gathered via the [Opportunity Insights](https://opportunityinsights.org/) project.  The codebook with explanations for each variable is [here](https://opportunityinsights.org/wp-content/uploads/2018/04/Codebook-MRC-Table-10.pdf). We will be trying to figure out what characteristics of a college are associated with the 2011 median income of students, `earnings`, 10 years after they graduate. The other data --- `faculty`, the average faculty salary; `sat`, the average SAT score; `tier`, the type of college; `public`, the private/public status; and `price`, tuition --- is reported as of 2001.
 
-**All dollar values are now measured in thousdands.**
+**All dollar values are now measured in thousands.**
 
 
 ### Scene 7
+
+```{r 7, echo=FALSE}
+model_1 <- lm(earnings  ~ sat + faculty, data = x)
+
+predict(model_1, newdata = tibble(faculty = 50, sat = 1200))
+
+```
+
 
 **Prompt:** Recall the model we made in Scene 4: `earnings` as a function of `sat` and `faculty`. 
 
@@ -45,6 +53,28 @@ Third, determine the school with the largest positive residual and the school wi
 
 Fourth, speculate about what causes these residuals. What is the model missing? How might we improve the model?
 
+```{r 8, echo=FALSE}
+
+model_1 %>%
+  augment() %>%
+  inner_join(x, by = c("earnings", "sat", "faculty")) %>%
+  select(name, .resid) %>%
+  arrange(.resid)
+
+# OR
+
+augment(model_1, data = x) %>%
+  select(name, earnings, sat, faculty, .fitted, .resid) %>%
+  arrange(desc(.resid))
+
+```
+ 
+Residual: the different between the model and the reserved
+
+MCPHS = largest residual
+Oberlin = largest negative residual
+
+Why residuals? it means that the earnings for those schools are much higher or lower than our models would predict. You could add type of school as an explanatory variable, because these are both specialty schools
 
 ### Scene 9
 
@@ -52,13 +82,33 @@ Fourth, speculate about what causes these residuals. What is the model missing? 
 
 First, estimate a new model in which `earnings` are explained by `public` and by `price`. There is no interaction term. Interpret the regression coefficients.
 
+```{r 9, echo=FALSE}
+owen <- lm(earnings ~ public + price, data = x)
+model_2 <- lm(earnings ~ public * price, data = x)
+model_2
+
+```
+
+for public: at price held constant, earnings increase by on average 14.9 thousand dollars when switching from public to private
+for price: at public held constant, for every one thousand increase in price, there is a 1.394 thousand increase in earnings on average
+
+model_2: 
+interaction variable: when public = 1 (school is public), this number is added to the price coefficient (earnings increased by this much more with price increase)
+
 Second, estimate another model, `model_2`, in which `earnings` are explained by `public`, `price` and the **interaction** between `public` and `price`. Interpret the regression coefficients.
 
 Third, use `tidy()` to find the confidence intervals for the regression coefficients for `model_2`.
 
+```{r 9.5, echo=FALSE}
+model_2 %>% tidy(conf.int = T)
+
+```
+
+
 Fourth, interpret the confidence interval for coefficient on `public` using one sentence for the Bayesian interpretation and one sentence for the Frequentist interpretation.
 
-
+Bayesian: there is a 95% chance that the true coefficient is within this range
+frequentist: if we run this experiement many times, 95% the intervals we construct will contain the true coefficient 
 
 ### Scene 10
 
@@ -66,6 +116,18 @@ Fourth, interpret the confidence interval for coefficient on `public` using one 
 
 In other words, you are not using `tidy(conf.int = TRUE)`. You are just using `tidy()`. That gives you the tibble of the regression estimates. Then, you can use `unnest()` to "explode" out a row for each estimate. Then, `group_by(term)` and the usual quantile trick for each parameter should give you what you want.
 
+```{r}
+x %>%
+  rep_sample_n(size = 797, reps = 100, replace = T) %>%
+  group_by(replicate) %>%
+  nest() %>%
+  mutate(mod = map(data, ~ lm(earnings ~ public * price, data = .)),
+         reg_results = map(mod, ~ tidy(.))) %>%
+  unnest(reg_results) %>%
+  group_by(term) %>%
+  summarize(conf.low = quantile(estimate, .025),
+            conf.high = quantile(estimate, .975))
+```
 
 ### Scene 11
 
